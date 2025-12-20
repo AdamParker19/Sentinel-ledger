@@ -1,0 +1,90 @@
+# =============================================================================
+# Sentinel Ledger Service Configuration
+# =============================================================================
+
+spring:
+  application:
+    name: sentinel-ledger
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Datasource
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sentinel_ledger
+    username: sentinel
+    password: sentinel123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate
+  # ---------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # ---------------------------------------------------------------------------
+  # Kafka Producer Configuration
+  # ---------------------------------------------------------------------------
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: sentinel-ledger-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.sentinel.ledger.entity
+
+# =============================================================================
+# Server Configuration
+# =============================================================================
+server:
+  port: 8080
+
+# =============================================================================
+# Actuator Endpoints
+# =============================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# =============================================================================
+# Custom Application Properties
+# =============================================================================
+sentinel:
+  kafka:
+    topic:
+      transaction-created: txn.created
+      transaction-scored: txn.scored
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  level:
+    root: INFO
+    com.sentinel: DEBUG
+    org.springframework.kafka: INFO
+    org.hibernate.SQL: DEBUG
