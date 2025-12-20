@@ -24,6 +24,8 @@ import java.util.UUID;
         @Index(name = "idx_transaction_merchant", columnList = "merchantId"),
         @Index(name = "idx_transaction_status", columnList = "status"),
         @Index(name = "idx_transaction_timestamp", columnList = "timestamp")
+}, uniqueConstraints = {
+        @UniqueConstraint(name = "uk_transaction_client_ref", columnNames = "clientReferenceId")
 })
 @Data
 @Builder
@@ -34,6 +36,14 @@ public class Transaction {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    /**
+     * Client-provided idempotency key to prevent duplicate transactions.
+     * If a client retries a request with the same clientReferenceId,
+     * the existing transaction is returned instead of creating a duplicate.
+     */
+    @Column(length = 100, unique = true)
+    private String clientReferenceId;
 
     /**
      * Transaction amount in the base currency
