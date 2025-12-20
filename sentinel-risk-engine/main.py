@@ -58,12 +58,14 @@ logger = logging.getLogger(__name__)
 class TransactionEvent(BaseModel):
     """Incoming transaction event from Kafka."""
     id: str
+    clientReferenceId: str | None = Field(default=None, alias="clientReferenceId")
     amount: float
     currency: str = "USD"
     merchantId: str = Field(alias="merchantId")
     customerId: str = Field(alias="customerId")
     status: str = "PENDING"
-    timestamp: str | None = None
+    riskScore: float | None = Field(default=None, alias="riskScore")
+    timestamp: float | str | None = None
     description: str | None = None
     sourceIp: str | None = Field(default=None, alias="sourceIp")
     locationCode: str | None = Field(default=None, alias="locationCode")
@@ -160,7 +162,14 @@ def score_transaction(event: TransactionEvent) -> tuple[float, bool]:
     
     # Extract features from event
     # In production, these would be computed from historical data
-    hour = datetime.now().hour if event.timestamp is None else datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")).hour
+    if event.timestamp is None:
+        hour = datetime.now().hour
+    elif isinstance(event.timestamp, (int, float)):
+        # Unix epoch timestamp (from Java Instant)
+        hour = datetime.fromtimestamp(event.timestamp).hour
+    else:
+        # ISO format string
+        hour = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")).hour
     
     features = np.array([[
         event.amount,
@@ -183,7 +192,8 @@ def score_transaction(event: TransactionEvent) -> tuple[float, bool]:
     # Isolation Forest decision_function returns negative for anomalies
     risk_score = max(0.0, min(1.0, 0.5 - (decision_score * 0.5)))
     
-    is_anomaly = prediction == -1
+    # Convert numpy bool to Python bool for JSON serialization
+    is_anomaly = bool(prediction == -1)
     
     return risk_score, is_anomaly
 
@@ -208,7 +218,7 @@ def score_features(request: RiskScoreRequest) -> tuple[float, bool]:
     prediction = state.model.predict(features_scaled)[0]
     
     risk_score = max(0.0, min(1.0, 0.5 - (decision_score * 0.5)))
-    is_anomaly = prediction == -1
+    is_anomaly = bool(prediction == -1)
     
     return risk_score, is_anomaly
 
@@ -243,6 +253,7 @@ async def consume_transactions():
         async for message in state.consumer:
             try:
                 logger.info(f"Received message: partition={message.partition}, offset={message.offset}")
+                logger.info(f"Raw message value: {message.value}")
                 
                 # Parse transaction event
                 event = TransactionEvent(**message.value)
@@ -271,7 +282,12 @@ async def consume_transactions():
                 logger.info(f"Published scored event for transaction: {event.id}")
                 
             except Exception as e:
-                logger.error(f"Error processing message: {e}", exc_info=True)
+                import traceback
+                error_msg = f"Error processing message: {e}\nTraceback:\n{traceback.format_exc()}\nMessage: {message.value}"
+                logger.error(error_msg)
+                # Also write to file for debugging
+                with open("consumer_errors.log", "a") as f:
+                    f.write(f"\n{'='*60}\n{error_msg}\n")
                 
     except asyncio.CancelledError:
         logger.info("Consumer task cancelled")
