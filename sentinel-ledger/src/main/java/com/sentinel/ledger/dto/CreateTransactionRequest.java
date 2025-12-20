@@ -36,4 +36,11 @@ public class CreateTransactionRequest {
     private String sourceIp;
 
     private String locationCode;
+
+    /**
+     * Client-provided idempotency key to prevent duplicate transactions.
+     * If provided, duplicate requests with the same key return the existing
+     * transaction.
+     */
+    private String clientReferenceId;
 }

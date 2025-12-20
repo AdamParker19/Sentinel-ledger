@@ -61,4 +61,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findRecentTransactionsByCustomer(
             @Param("customerId") String customerId,
             @Param("since") Instant since);
+
+    /**
+     * Find transaction by client reference ID for idempotency check
+     */
+    java.util.Optional<Transaction> findByClientReferenceId(String clientReferenceId);
 }

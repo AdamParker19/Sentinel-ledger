@@ -21,6 +21,7 @@ import java.util.UUID;
 public class TransactionEvent {
 
     private UUID id;
+    private String clientReferenceId;
     private BigDecimal amount;
     private String currency;
     private String merchantId;

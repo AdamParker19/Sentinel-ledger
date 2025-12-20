@@ -35,13 +35,25 @@ public class TransactionService {
 
     /**
      * Create a new transaction.
-     * 1. Persist with PENDING status
-     * 2. Publish event to Kafka for risk assessment
+     * 1. Check for existing transaction with same clientReferenceId (idempotency)
+     * 2. Persist with PENDING status
+     * 3. Publish event to Kafka for risk assessment
      */
     @Transactional
     public TransactionEvent createTransaction(CreateTransactionRequest request) {
         log.info("Creating transaction for customer: {}, merchant: {}, amount: {}",
                 request.getCustomerId(), request.getMerchantId(), request.getAmount());
+
+        // Idempotency check: return existing transaction if clientReferenceId already
+        // exists
+        if (request.getClientReferenceId() != null && !request.getClientReferenceId().isBlank()) {
+            var existing = transactionRepository.findByClientReferenceId(request.getClientReferenceId());
+            if (existing.isPresent()) {
+                log.info("Idempotency hit: returning existing transaction {} for clientReferenceId: {}",
+                        existing.get().getId(), request.getClientReferenceId());
+                return toEvent(existing.get());
+            }
+        }
 
         // Build and persist transaction entity
         Transaction transaction = Transaction.builder()
@@ -52,6 +64,7 @@ public class TransactionService {
                 .description(request.getDescription())
                 .sourceIp(request.getSourceIp())
                 .locationCode(request.getLocationCode())
+                .clientReferenceId(request.getClientReferenceId())
                 .status(TransactionStatus.PENDING)
                 .build();
 
@@ -139,6 +152,7 @@ public class TransactionService {
     private TransactionEvent toEvent(Transaction transaction) {
         return TransactionEvent.builder()
                 .id(transaction.getId())
+                .clientReferenceId(transaction.getClientReferenceId())
                 .amount(transaction.getAmount())
                 .currency(transaction.getCurrency())
                 .merchantId(transaction.getMerchantId())

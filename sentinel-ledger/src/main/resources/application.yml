@@ -88,3 +88,17 @@ logging:
     com.sentinel: DEBUG
     org.springframework.kafka: INFO
     org.hibernate.SQL: DEBUG
+
+# =============================================================================
+# Docker Profile - Use when running inside Docker container
+# Activate with: SPRING_PROFILES_ACTIVE=docker
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/sentinel_ledger
+  kafka:
+    bootstrap-servers: kafka:29092
