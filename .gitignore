@@ -45,3 +45,7 @@ logs/
 # Local configuration
 application-local.yml
 .env.local
+
+# Debug/Error files
+compile_errors*.txt
+consumer_errors.log
