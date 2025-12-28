@@ -1,92 +1,83 @@
-# 🛡️ Sentinel - Event-Driven Fraud Detection System
+# 🛡️ Sentinel: High-Frequency Fraud Detection Platform
 
-[![Java](https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-green?style=flat-square&logo=spring)](https://spring.io/projects/spring-boot)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-teal?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Kafka](https://img.shields.io/badge/Apache%20Kafka-7.5-black?style=flat-square&logo=apachekafka)](https://kafka.apache.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-Spring%20Boot-orange)](https://spring.io/)
+[![Golang](https://img.shields.io/badge/Go-Fiber-blue)](https://gofiber.io/)
+[![Python](https://img.shields.io/badge/Python-FastAPI-yellow)](https://fastapi.tiangolo.com/)
+[![Kafka](https://img.shields.io/badge/Apache-Kafka-black)](https://kafka.apache.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)](https://www.docker.com/)
 
-A **polyglot microservices architecture** for real-time fraud detection, combining Java/Spring Boot for transaction processing, Python/FastAPI with machine learning for risk scoring, and Apache Kafka for event streaming.
+**Sentinel** is an event-driven, polyglot financial architecture designed to detect fraud in real-time. It demonstrates the **"Fan-Out" architecture pattern**, decoupling high-velocity ingestion from ACID-compliant ledger recording.
 
 ---
 
-## 📐 Architecture
+## 📐 Architecture Overview
 
+The system is composed of three specialized microservices orchestrated via **Apache Kafka**:
+
+| Service | Technology | Role (The "Why") |
+| :--- | :--- | :--- |
+| **Sentinel Gateway** | **Golang** (Fiber) | **Ingestion:** Handles 10k+ TPS bursts. Validates structural integrity and buffers to Kafka. Zero logic, pure speed. |
+| **Sentinel Ledger** | **Java** (Spring Boot) | **Consistency:** Consumes messages, manages Double-Entry Ledger in Postgres, and ensures ACID compliance. Implements **Retries & DLQ**. |
+| **Sentinel Risk** | **Python** (Scikit-Learn) | **Intelligence:** Runs an **Isolation Forest** ML model on live transaction streams to score fraud probability. |
+
+```mermaid
+graph LR
+    User[Mobile App] -- POST /ingress --> Gateway(Go Gateway)
+    Gateway -- "Topic: raw.requests" --> Kafka{Apache Kafka}
+    Kafka -- Consumer Group A --> Ledger(Java Ledger)
+    Kafka -- Consumer Group B --> Risk(Python AI)
+    Risk -- "Topic: txn.scored" --> Kafka
+    Kafka -- Update Status --> Ledger
+    Ledger -- Persist --> DB[(PostgreSQL)]
 ```
-┌─────────────────────┐         ┌──────────────────┐         ┌─────────────────────┐
-│   sentinel-ledger   │         │   Apache Kafka   │         │ sentinel-risk-engine│
-│  (Java/Spring Boot) │────────▶│                  │────────▶│  (Python/FastAPI)   │
-│                     │         │   txn.created    │         │                     │
-│  • REST API         │         │   txn.scored     │         │  • ML Scoring       │
-│  • PostgreSQL       │         │                  │◀────────│  • Isolation Forest │
-│  • Kafka Producer   │         └──────────────────┘         │  • Async Consumer   │
-└─────────┬───────────┘                                      └─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│     PostgreSQL      │
-│  (Transaction DB)   │
-└─────────────────────┘
-```
 
-### Event Flow
+---
 
-1. **Transaction Created** → `sentinel-ledger` receives a POST request, saves transaction as `PENDING`, publishes to `txn.created` topic
-2. **Risk Scoring** → `sentinel-risk-engine` consumes the event, runs through Isolation Forest ML model
-3. **Score Published** → Risk score and recommendation (`APPROVE`/`REJECT`) published to `txn.scored` topic
+## ✨ Key Features
+
+### 🔄 Resilience (Dead Letter Queue)
+Failed messages are automatically **retried 3 times** with exponential backoff (1s → 2s → 4s). After exhausting retries, messages are routed to `raw.requests-dlt` for manual inspection.
+
+### 📊 Observability (Prometheus + Grafana)
+- **Prometheus** scrapes metrics from Spring Boot Actuator (`/actuator/prometheus`)
+- **Grafana** visualizes TPS, error rates, and fraud detection statistics
+
+### 🧠 ML-Powered Fraud Detection
+An **Isolation Forest** model scores each transaction in real-time. Anomalies trigger immediate rejection.
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- **Docker & Docker Compose** (for infrastructure)
-- **Java 17** (for ledger service)
-- **Python 3.10+** (for risk engine)
-- **Maven** (or use included wrapper)
-
-### 1. Clone the Repository
-
 ```bash
-git clone https://github.com/AdamParker19/Sentinel-ledger.git
-cd Sentinel-ledger
-```
-
-### 2. Start Infrastructure
-
-```bash
+# 1. Start all infrastructure (Kafka, Postgres, Gateway, Prometheus, Grafana)
 docker-compose up -d
-```
 
-This starts:
-- **Zookeeper** (port 2181)
-- **Kafka** (port 9092)
-- **PostgreSQL** (port 5432)
-
-### 3. Train the ML Model
-
-```bash
-cd sentinel-risk-engine
-pip install -r requirements.txt
-python train.py
-```
-
-This generates `model.pkl` - an Isolation Forest trained on synthetic transaction data.
-
-### 4. Start the Risk Engine
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8001
-```
-
-### 5. Start the Ledger Service
-
-```bash
+# 2. Start the Java Ledger Service
 cd sentinel-ledger
 ./mvnw spring-boot:run
+
+# 3. Start the Python Risk Engine
+cd sentinel-risk-engine
+python -m uvicorn main:app --port 8001
+
+# 4. Send a test transaction
+curl -X POST http://localhost:3000/api/v1/ingress \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 1500, "merchantId": "STORE-001", "customerId": "CUST-123"}'
 ```
+
+---
+
+## 🌐 Service Endpoints
+
+| Service | Port | Endpoints |
+|---------|------|-----------|
+| **Gateway** (Go) | 3000 | `POST /api/v1/ingress`, `GET /health` |
+| **Ledger** (Java) | 8080 | `GET /api/v1/transactions/{id}`, `GET /actuator/prometheus` |
+| **Risk Engine** (Python) | 8001 | `GET /health`, `POST /api/v1/score` |
+| **Prometheus** | 9090 | Metrics dashboard |
+| **Grafana** | 3001 | Visualization (admin/admin) |
 
 ---
 
@@ -94,122 +85,56 @@ cd sentinel-ledger
 
 ```
 sentinel/
-├── docker-compose.yml              # Infrastructure (Kafka, Zookeeper, PostgreSQL)
-├── README.md
-│
-├── sentinel-ledger/                # Java Spring Boot Service
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/sentinel/ledger/
-│       │   ├── LedgerApplication.java
-│       │   ├── config/KafkaProducerConfig.java
-│       │   ├── controller/TransactionController.java
-│       │   ├── dto/
-│       │   ├── entity/Transaction.java
-│       │   ├── repository/TransactionRepository.java
-│       │   └── service/TransactionService.java
-│       └── resources/application.yml
-│
-└── sentinel-risk-engine/           # Python FastAPI Service
-    ├── requirements.txt
-    ├── train.py                    # ML model training script
-    └── main.py                     # FastAPI application
+├── docker-compose.yml        # Infrastructure orchestration
+├── prometheus.yml            # Prometheus scrape config
+├── sentinel-gateway/         # Go Fiber ingestion service
+│   ├── main.go
+│   └── Dockerfile
+├── sentinel-ledger/          # Java Spring Boot ledger
+│   └── src/main/java/com/sentinel/ledger/
+│       ├── listener/         # Kafka consumers (DLQ enabled)
+│       ├── service/          # Business logic
+│       └── entity/           # JPA entities
+└── sentinel-risk-engine/     # Python ML scoring service
+    ├── main.py
+    └── train.py              # Model training script
 ```
 
 ---
 
-## 🔌 API Endpoints
-
-### Ledger Service (Port 8080)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/transactions` | Create a new transaction |
-| `GET` | `/api/v1/transactions/{id}` | Get transaction by ID |
-| `GET` | `/api/v1/transactions/customer/{id}` | Get customer transactions |
-| `GET` | `/api/v1/transactions/pending` | Get pending transactions |
-
-#### Create Transaction Example
-
-```bash
-curl -X POST http://localhost:8080/api/v1/transactions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount": 150.00,
-    "currency": "USD",
-    "merchantId": "MERCH-001",
-    "customerId": "CUST-12345",
-    "description": "Online purchase"
-  }'
-```
-
-### Risk Engine (Port 8001)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/api/v1/score` | Manual risk scoring |
-| `GET` | `/api/v1/model/info` | Model information |
-
----
-
-## ⚙️ Configuration
+## 🔧 Configuration
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SENTINEL_KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka bootstrap servers |
-| `SENTINEL_MODEL_PATH` | `model.pkl` | Path to trained model |
-
-### Database Credentials
-
-| Property | Value |
-|----------|-------|
-| Host | `localhost:5432` |
-| Database | `sentinel_ledger` |
-| Username | `sentinel` |
-| Password | `sentinel123` |
-
-### Kafka Topics
-
-| Topic | Description |
-|-------|-------------|
-| `txn.created` | New transactions awaiting risk assessment |
-| `txn.scored` | Transactions with risk scores and recommendations |
+| Variable | Service | Default |
+|----------|---------|---------|
+| `KAFKA_BROKERS` | Gateway | `localhost:9092` |
+| `INGRESS_TOPIC` | Gateway | `raw.requests` |
+| `SPRING_PROFILES_ACTIVE` | Ledger | `default` |
+| `SENTINEL_KAFKA_BOOTSTRAP_SERVERS` | Risk Engine | `localhost:9092` |
 
 ---
 
-## 🧠 Machine Learning Model
+## 📈 Monitoring
 
-The risk engine uses an **Isolation Forest** algorithm for anomaly detection:
+Access **Grafana** at `http://localhost:3001` (credentials: `admin/admin`)
 
-- **Features**: amount, hour_of_day, day_of_week, merchant_category, customer_age_days, txn_frequency_1h, avg_amount_30d
-- **Contamination**: 5% (expected anomaly ratio)
-- **Output**: Risk score (0.0-1.0) and binary anomaly flag
-
-Run `python train.py` to retrain on new data.
+1. Add Prometheus data source: `http://prometheus:9090`
+2. Import dashboard for Spring Boot metrics
+3. Monitor: Transactions/sec, Fraud Rate, Response Times
 
 ---
 
-## 🛠️ Development
+## 🤝 Contributing
 
-### Building the Ledger Service
-
-```bash
-cd sentinel-ledger
-./mvnw clean package -DskipTests
-```
-
-### Running Tests
-
-```bash
-# Java tests
-cd sentinel-ledger && ./mvnw test
-
-# Python tests
-cd sentinel-risk-engine && pytest
-```
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

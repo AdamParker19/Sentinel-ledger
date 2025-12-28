@@ -91,6 +91,81 @@ services:
       - sentinel-network
     restart: unless-stopped
 
+  # =============================================================================
+  # Sentinel Ledger - Java Spring Boot Transaction Service
+  # =============================================================================
+  sentinel-ledger:
+    build:
+      context: ./sentinel-ledger
+      dockerfile: Dockerfile
+    container_name: sentinel-ledger
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sentinel_ledger
+      - SPRING_DATASOURCE_USERNAME=sentinel
+      - SPRING_DATASOURCE_PASSWORD=sentinel123
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Sentinel Risk Engine - Python ML Fraud Detection
+  # =============================================================================
+  sentinel-risk-engine:
+    build:
+      context: ./sentinel-risk-engine
+      dockerfile: Dockerfile
+    container_name: sentinel-risk-engine
+    ports:
+      - "8001:8001"
+    environment:
+      - SENTINEL_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SENTINEL_KAFKA_CONSUMER_GROUP=sentinel-risk-engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Prometheus - Metrics Collection
+  # =============================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sentinel-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - sentinel-ledger
+    networks:
+      - sentinel-network
+
+  # =============================================================================
+  # Grafana - Metrics Visualization
+  # =============================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sentinel-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    networks:
+      - sentinel-network
+
 networks:
   sentinel-network:
     driver: bridge
